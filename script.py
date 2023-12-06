@@ -5,9 +5,9 @@ import time
 import random
 import pygetwindow as gw
 from pynput.mouse import Listener
-from pynput.keyboard import Key, Controller
 import tkinter.messagebox as messagebox
 from queue import Queue
+
 
 # 主函数，执行点击操作
 def main(points_a_str, points_b_str, min_sleep, max_sleep, window_title, running):
@@ -21,6 +21,20 @@ def main(points_a_str, points_b_str, min_sleep, max_sleep, window_title, running
 
     points_a = parse_points(points_a_str.get())
     points_b = parse_points(points_b_str.get())
+
+    def click_point(point, window):
+        # 获取窗口当前的位置
+        window_left, window_top = window.topleft
+        # 将点的位置调整为窗口的相对位置
+        new_x = window_left + point[0]
+        new_y = window_top + point[1]
+        pyautogui.click(new_x, new_y)
+
+    def is_window_valid(window):
+        # 检查窗口是否被最小化或关闭
+        print(window)
+        return window.visible and not window.isMinimized
+
     try:
         window = gw.getWindowsWithTitle(window_title)[0]
         if window:
@@ -29,20 +43,32 @@ def main(points_a_str, points_b_str, min_sleep, max_sleep, window_title, running
         print(f"没有找到标题为 '{window_title}' 的窗口。")
         return
 
-    def click_point(point):
-        pyautogui.click(point)
-
     def random_sleep():
         time.sleep(random.uniform(min_sleep, max_sleep))
 
-    while running[0]:
-        point_a = random.choice(points_a)
-        point_b = random.choice(points_b)
+    select_from_a = True  # 初始设置为从points_a开始
 
-        click_point(point_a)
-        random_sleep()
-        click_point(point_b)
-        random_sleep()
+    while running[0]:
+        # 每次点击前检查窗口状态
+        if not is_window_valid(window):
+            running[0] = False
+            print("目标窗口被关闭或最小化。停止点击操作。")
+            break
+        if select_from_a:
+            # 从Point A坐标集合中随机选择一个点进行点击
+            if points_a:
+                point_a = random.choice(points_a)
+                click_point(point_a, window)
+                random_sleep()
+            select_from_a = False  # 下一次选择将从points_b进行
+        else:
+            # 从Point B坐标集合中随机选择一个点进行点击
+            if points_b:
+                point_b = random.choice(points_b)
+                click_point(point_b, window)
+                random_sleep()
+            select_from_a = True  # 下一次选择将从points_a进行
+
 
 # GUI界面
 def gui():
@@ -84,17 +110,22 @@ def gui():
             if pressed:
                 try:
                     current_window = gw.getWindowsAt(x, y)[0]
-                    print(f"当前的窗口是：{current_window.title}")
-                    if current_window.title == window_title:
-                        current_points = points_var.get()
-                        new_point = f"{x},{y}"
-                        # 如果已经有坐标，则添加新坐标，否则直接设置新坐标
-                        if current_points:
-                            points_var.set(current_points + ';' + new_point)
+                    if current_window:
+                        print(current_window.title)
+                        if current_window.title == window_title:
+                            window_left, window_top = current_window.topleft
+                            # 计算相对于窗口左上角的坐标
+                            relative_x = x - window_left
+                            relative_y = y - window_top
+
+                            current_points = points_var.get()
+                            new_point = f"{relative_x},{relative_y}"
+                            if current_points:
+                                points_var.set(current_points + ';' + new_point)
+                            else:
+                                points_var.set(new_point)
                         else:
-                            points_var.set(new_point)
-                    else:
-                        msg_queue.put("点击位置不在指定窗口内！")
+                            msg_queue.put("点击位置不在指定窗口内！")
                 except IndexError:
                     msg_queue.put("未检测到窗口！")
                 return False  # 停止监听
@@ -155,6 +186,7 @@ def gui():
     tk.Button(root, text="结束", command=stop).pack()
 
     root.mainloop()
+
 
 if __name__ == "__main__":
     gui()
